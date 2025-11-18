@@ -32,20 +32,20 @@ pub struct RpcError<E = JsonValue> {
 }
 
 #[allow(async_fn_in_trait)] // 1. we are a consumer of the future, 2. we are in single-thread wasm
-/// High-level trait for methods.
-pub trait CustomMethod {
+/// High-level trait for custom procedures.
+pub trait CustomProcedure {
 	type Params: DeserializeOwned;
 	type SuccessData: Serialize;
 	type ErrorData: Serialize;
 
-	/// The entrypoint of the custom method.
+	/// The entrypoint of the custom procedure.
 	///
-	/// This is called for each RPC of the custom method.
+	/// This is called for each RPC of the custom procedure.
 	///
 	/// ## Async
 	///
 	/// Note that currently it is async only for interface reasons - there are no IO methods
-	/// that actually execute concurrently exposed into the method runtime.
+	/// that actually execute concurrently exposed into the procedure runtime.
 	/// However, for the sake of matching interface the of [`rpc_client::RpcClient`] and existing
 	/// ecosystem code this is async so that it is possible to `.await` inside.
 	///
@@ -62,10 +62,10 @@ pub trait CustomMethod {
 	}
 }
 
-struct CustomMethodLog {
+struct CustomProcedureLog {
 	fmt: fn(&log::Record) -> String
 }
-impl log::Log for CustomMethodLog {
+impl log::Log for CustomProcedureLog {
 	fn enabled(&self, _metadata: &log::Metadata) -> bool {
 		true
 	}
@@ -81,24 +81,24 @@ impl log::Log for CustomMethodLog {
 
 // we need another trait because we cannot put an associated constant onto `sys::Guest`
 // and we cannot define an associated `static` either.
-trait CustomMethodInternal {
-	const LOGGER: CustomMethodLog;
+trait CustomProcedureInternal {
+	const LOGGER: CustomProcedureLog;
 	fn init();
 }
-impl<T: CustomMethod> CustomMethodInternal for T {
-	const LOGGER: CustomMethodLog = CustomMethodLog { fmt: T::log_fmt };
+impl<T: CustomProcedure> CustomProcedureInternal for T {
+	const LOGGER: CustomProcedureLog = CustomProcedureLog { fmt: T::log_fmt };
 	fn init() {
 		log::set_logger(&Self::LOGGER).unwrap();
 		log::set_max_level(T::LOG_MAX_LEVEL);
 	}
 }
 
-// Auto-implement the bindings trait for the method if it has the high-level trait.
+// Auto-implement the bindings trait for the procedure if it has the high-level trait.
 static INIT_CALLED: std::sync::Once = std::sync::Once::new();
-impl<T: CustomMethod> sys::Guest for T {
+impl<T: CustomProcedure> sys::Guest for T {
 	fn run(params: sys::Json) -> Result<sys::Json, sys::RpcError> {
 		INIT_CALLED.call_once(|| {
-			<T as CustomMethodInternal>::init();
+			<T as CustomProcedureInternal>::init();
 		});
 
 		let params: T::Params = match serde_json::from_slice(&params) {
@@ -150,7 +150,7 @@ impl<T: CustomMethod> sys::Guest for T {
 	}
 }
 
-/// Make an remote procedure call from the method.
+/// Make an remote procedure call from the procedure.
 pub fn call_rpc<P: Serialize, Rs: DeserializeOwned, Re: DeserializeOwned>(
 	method: &str,
 	params: P,
@@ -210,7 +210,7 @@ impl Subscription {
 }
 
 #[macro_export]
-macro_rules! rockrpc_custom_method {
+macro_rules! rockrpc_custom_procedure {
 	( $name: ident ) => {
 		$crate::sys::export!($name with_types_in $crate::sys);
 	};

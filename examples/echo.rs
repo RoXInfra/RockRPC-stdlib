@@ -1,7 +1,7 @@
-use rockrpc_method::{CustomMethod, JsonValue, RpcError};
+use rockrpc_stdlib::{CustomProcedure, JsonValue, RpcError};
 
-pub struct EchoMethod;
-impl CustomMethod for EchoMethod {
+pub struct EchoProcedure;
+impl CustomProcedure for EchoProcedure {
 	type Params = JsonValue;
 	type SuccessData = JsonValue;
 	type ErrorData = ();
@@ -10,4 +10,4 @@ impl CustomMethod for EchoMethod {
 		Ok(params)
 	}
 }
-rockrpc_method::rockrpc_custom_method!(EchoMethod);
+rockrpc_stdlib::rockrpc_custom_procedure!(EchoProcedure);

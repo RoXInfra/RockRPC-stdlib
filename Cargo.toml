@@ -1,5 +1,5 @@
 [package]
-name = "rockrpc-method"
+name = "rockrpc-stdlib"
 version = "0.2.0"
 edition = "2024"
 
