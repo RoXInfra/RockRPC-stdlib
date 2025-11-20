@@ -11,7 +11,11 @@ use super::{config::*, response::Response as RpcResponse, response::*};
 #[derive(Debug, thiserror::Error)]
 pub enum PubsubClientError {
 	#[error("subscribe failed: {code} {message}")]
-	SubscribeFailed { code: i32, message: String, data: Option<Value> },
+	SubscribeFailed {
+		code: i32,
+		message: String,
+		data: Option<Value>,
+	},
 	#[error(transparent)]
 	Io(#[from] std::io::Error),
 }
@@ -20,26 +24,27 @@ type SubscribeResult<T> = Result<PubsubClientStream<T>, PubsubClientError>;
 
 pub struct PubsubClientStream<T: serde::de::DeserializeOwned> {
 	subscription: crate::Subscription,
-	_boo: std::marker::PhantomData<T>
+	_boo: std::marker::PhantomData<T>,
 }
 impl<T: serde::de::DeserializeOwned> futures_util::Stream for PubsubClientStream<T> {
 	type Item = T;
 
-	fn poll_next(self: Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
-		std::task::Poll::Ready(
-			match self.subscription.recv() {
-				Ok(v) => Some(v),
-				Err(err) => {
-					log::trace!("Failed to receive a subscription notification: {err}");
-					None
-				}
+	fn poll_next(
+		self: Pin<&mut Self>,
+		_cx: &mut std::task::Context<'_>,
+	) -> std::task::Poll<Option<Self::Item>> {
+		std::task::Poll::Ready(match self.subscription.recv() {
+			Ok(v) => Some(v),
+			Err(err) => {
+				log::trace!("Failed to receive a subscription notification: {err}");
+				None
 			}
-		)
+		})
 	}
 }
 
 pub struct PubsubClient {
-	_priv: ()
+	_priv: (),
 }
 impl PubsubClient {
 	#[allow(clippy::new_without_default)]
@@ -54,15 +59,23 @@ impl PubsubClient {
 	) -> SubscribeResult<T> {
 		let subscription = match crate::Subscription::new::<Value, Value>(method, params) {
 			Ok(Ok(v)) => v,
-			Ok(Err(crate::RpcError { code, message, data })) => return Err(PubsubClientError::SubscribeFailed {
-				code, message, data
-			}),
-			Err(err) => return Err(PubsubClientError::Io(err))
+			Ok(Err(crate::RpcError {
+				code,
+				message,
+				data,
+			})) => {
+				return Err(PubsubClientError::SubscribeFailed {
+					code,
+					message,
+					data,
+				});
+			}
+			Err(err) => return Err(PubsubClientError::Io(err)),
 		};
 
 		Ok(PubsubClientStream {
 			subscription,
-			_boo: std::marker::PhantomData
+			_boo: std::marker::PhantomData,
 		})
 	}
 
