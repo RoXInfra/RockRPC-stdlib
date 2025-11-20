@@ -3,6 +3,8 @@ use std::io::{Error as IoError, ErrorKind};
 use serde::{Serialize, de::DeserializeOwned};
 pub use serde_json::{self, Value as JsonValue, json};
 
+use crate::rpc_client::ClientError;
+
 pub mod rpc_client;
 pub mod sys;
 
@@ -63,7 +65,7 @@ pub trait CustomProcedure {
 }
 
 struct CustomProcedureLog {
-	fmt: fn(&log::Record) -> String
+	fmt: fn(&log::Record) -> String,
 }
 impl log::Log for CustomProcedureLog {
 	fn enabled(&self, _metadata: &log::Metadata) -> bool {
@@ -71,9 +73,7 @@ impl log::Log for CustomProcedureLog {
 	}
 
 	fn log(&self, record: &log::Record) {
-		sys::rockawayx::rockrpc::rockrpc_host::log(
-			&(self.fmt)(record)
-		)
+		sys::rockawayx::rockrpc::rockrpc_host::log(&(self.fmt)(record))
 	}
 
 	fn flush(&self) {}
@@ -155,11 +155,14 @@ pub fn call_rpc<P: Serialize, Rs: DeserializeOwned, Re: DeserializeOwned>(
 	method: &str,
 	params: P,
 ) -> Result<Result<Rs, RpcError<Re>>, IoError> {
-	let params = serde_json::to_vec(&params).map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?;
+	let params =
+		serde_json::to_vec(&params).map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?;
 	match sys::rockawayx::rockrpc::rockrpc_host::call_rpc(method, &params) {
-		Ok(Ok(v)) => Ok(Ok(
-			serde_json::from_slice(&v).map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?
-		)),
+		Ok(Ok(v)) => {
+			Ok(Ok(serde_json::from_slice(&v).map_err(|err| {
+				IoError::new(ErrorKind::InvalidInput, err)
+			})?))
+		}
 		Ok(Err(sys::rockawayx::rockrpc::types::RpcError {
 			code,
 			message,
@@ -169,7 +172,10 @@ pub fn call_rpc<P: Serialize, Rs: DeserializeOwned, Re: DeserializeOwned>(
 			message,
 			data: match data {
 				None => None,
-				Some(v) => Some(serde_json::from_slice(&v).map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?),
+				Some(v) => Some(
+					serde_json::from_slice(&v)
+						.map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?,
+				),
 			},
 		})),
 		Err(err) => Err(IoError::from_raw_os_error(err as _)),
@@ -182,7 +188,8 @@ impl Subscription {
 		method: &str,
 		params: P,
 	) -> Result<Result<Self, RpcError<Re>>, IoError> {
-		let params = serde_json::to_vec(&params).map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?;
+		let params = serde_json::to_vec(&params)
+			.map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?;
 		match sys::rockawayx::rockrpc::rockrpc_host::RpcSubscription::subscribe(method, &params) {
 			Ok(Ok(v)) => Ok(Ok(Self(v))),
 			Ok(Err(sys::rockawayx::rockrpc::types::RpcError {
@@ -194,7 +201,10 @@ impl Subscription {
 				message,
 				data: match data {
 					None => None,
-					Some(v) => Some(serde_json::from_slice(&v).map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?),
+					Some(v) => Some(
+						serde_json::from_slice(&v)
+							.map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?,
+					),
 				},
 			})),
 			Err(err) => Err(IoError::from_raw_os_error(err as _)),
@@ -203,8 +213,19 @@ impl Subscription {
 
 	pub fn recv<N: DeserializeOwned>(&self) -> Result<N, IoError> {
 		match self.0.recv() {
-			Ok(v) => Ok(serde_json::from_slice(&v).map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?),
+			Ok(v) => Ok(serde_json::from_slice(&v)
+				.map_err(|err| IoError::new(ErrorKind::InvalidInput, err))?),
 			Err(err) => Err(IoError::from_raw_os_error(err as _)),
+		}
+	}
+}
+
+impl From<ClientError> for RpcError {
+	fn from(value: ClientError) -> Self {
+		RpcError {
+			code: 500,
+			message: value.to_string(),
+			data: None,
 		}
 	}
 }
