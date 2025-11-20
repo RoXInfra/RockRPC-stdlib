@@ -220,7 +220,7 @@ impl Subscription {
 	}
 }
 
-impl From<ClientError> for RpcError {
+impl<T> From<ClientError> for RpcError<T> {
 	fn from(value: ClientError) -> Self {
 		RpcError {
 			code: 500,
